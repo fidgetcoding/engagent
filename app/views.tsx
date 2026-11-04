@@ -2,16 +2,16 @@
 import { useState } from "react";
 import { DIRECTION_KINDS, PLATFORMS, type Action, type BrandConfig, type Card, type DirectionKind, type Platform, type State } from "@/lib/types";
 
-export interface P { state: State; config: BrandConfig; act: (a: Action) => void }
+export interface P { state: State; config: BrandConfig; act: (a: Action) => Promise<boolean> }
 const n = (v: number) => v.toLocaleString("en-US");
 const newId = () => `c-${crypto.randomUUID().slice(0, 8)}`;
 
 export function Board({ state, config, act }: P) {
   const [title, setTitle] = useState("");
-  const add = () => { if (!title.trim()) return; act({ type: "card.add", card: { id: newId(), title: title.trim(), type: config.contentTypes[0], stage: config.stages[0], platforms: state.platforms.slice(0, 1), due: null, brief: "", briefStatus: "none", sourceFindId: null, metrics: [] } }); setTitle(""); };
+  const add = async () => { if (!title.trim()) return; const draft = title; if (await act({ type: "card.add", card: { id: newId(), title: title.trim(), type: config.contentTypes[0], stage: config.stages[0], platforms: state.platforms.slice(0, 1), due: null, brief: "", briefStatus: "none", sourceFindId: null, metrics: [] } })) setTitle(current => current === draft ? "" : current); };
   return <>
     <div className="row" style={{ marginBottom: 16 }}>
-      <input aria-label="New content idea" placeholder="New content idea" value={title} onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add()} />
+      <input aria-label="New content idea" maxLength={300} placeholder="New content idea" value={title} onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add()} />
       <button className="primary" onClick={add}>Add idea</button>
     </div>
     <div className="kanban">{config.stages.map((stage) => (
@@ -43,7 +43,7 @@ function BriefCard({ card, config, act }: { card: Card; config: BrandConfig; act
   const [text, setText] = useState(card.brief);
   return <article className="card">
     <p><b>{card.title}</b></p>
-    <textarea aria-label={`Brief for ${card.title}`} placeholder="Hook, shots, references, call to action" value={text} onChange={(e) => setText(e.target.value)} />
+    <textarea aria-label={`Brief for ${card.title}`} maxLength={20000} placeholder="Hook, shots, references, call to action" value={text} onChange={(e) => setText(e.target.value)} />
     <div className="row spread" style={{ marginTop: 8 }}>
       <span className="meta">{({ none: "Draft", pending: "Waiting for approval", approved: "Approved", changes: "Changes requested" })[card.briefStatus]}</span>
       <span className="row">
@@ -78,11 +78,11 @@ export function Directions({ state, act }: P) {
     <h2>Platforms</h2>
     <div className="row" style={{ marginBottom: 24 }}>{PLATFORMS.map((p: Platform) => <label className="row" key={p}><input type="checkbox" checked={state.platforms.includes(p)} onChange={() => act({ type: "platform.toggle", platform: p })} />{p}</label>)}</div>
     <div className="grid">{DIRECTION_KINDS.map((kind) => {
-      const add = () => { if (!drafts[kind]?.trim()) return; act({ type: "direction.add", direction: { kind, value: drafts[kind]! } }); setDrafts({ ...drafts, [kind]: "" }); };
+      const add = async () => { const draft = drafts[kind]; if (!draft?.trim()) return; if (await act({ type: "direction.add", direction: { kind, value: draft } })) setDrafts(current => current[kind] === draft ? { ...current, [kind]: "" } : current); };
       return <section className="card" key={kind}>
         <h2>{LABELS[kind]}</h2>
         <div>{state.directions.filter((d) => d.kind === kind).map((d) => <span className="chip" key={d.value}>{d.value}<button aria-label={`Remove ${d.value}`} onClick={() => act({ type: "direction.remove", direction: d })}>×</button></span>)}</div>
-        <div className="row"><input aria-label={`Add to ${LABELS[kind]}`} value={drafts[kind] ?? ""} onChange={(e) => setDrafts({ ...drafts, [kind]: e.target.value })} onKeyDown={(e) => e.key === "Enter" && add()} /><button onClick={add}>Add</button></div>
+        <div className="row"><input aria-label={`Add to ${LABELS[kind]}`} maxLength={300} value={drafts[kind] ?? ""} onChange={(e) => setDrafts({ ...drafts, [kind]: e.target.value })} onKeyDown={(e) => e.key === "Enter" && add()} /><button onClick={add}>Add</button></div>
       </section>;
     })}</div>
   </>;
@@ -93,8 +93,8 @@ export function Performance({ state, act }: P) {
   const sum = (k: "views" | "likes" | "comments" | "shares") => rows.reduce((t, r) => t + r.m[k], 0);
   const [form, setForm] = useState({ id: "", platform: state.platforms[0] ?? "tiktok", views: "", likes: "", comments: "", shares: "" });
   const cardId = form.id || state.cards[0]?.id;
-  const num = (v: string) => Math.max(0, Number(v.replace(/,/g, "")) || 0);
-  const save = () => { if (!cardId) return; act({ type: "metric.log", id: cardId, metric: { platform: form.platform as Platform, views: num(form.views), likes: num(form.likes), comments: num(form.comments), shares: num(form.shares), at: new Date().toISOString() } }); setForm({ ...form, views: "", likes: "", comments: "", shares: "" }); };
+  const num = (v: string) => v.trim() === "" ? 0 : Number(v.replace(/,/g, ""));
+  const save = async () => { if (!cardId) return; const draft = form; if (await act({ type: "metric.log", id: cardId, metric: { platform: form.platform as Platform, views: num(form.views), likes: num(form.likes), comments: num(form.comments), shares: num(form.shares), at: new Date().toISOString() } })) setForm(current => current === draft ? { ...current, views: "", likes: "", comments: "", shares: "" } : current); };
   return <>
     <div className="stats">{(["views", "likes", "comments", "shares"] as const).map((k) => <div className="card stat" key={k}><b>{n(sum(k))}</b><span className="meta">{k}</span></div>)}</div>
     <h2>Log results</h2>

@@ -5,3 +5,5 @@ node_modules
 data/*.json
 *.tsbuildinfo
 next-env.d.ts
+data/*.lock/
+data/*.tmp

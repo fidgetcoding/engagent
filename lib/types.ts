@@ -26,12 +26,15 @@ export interface Card {
   brief: string; briefStatus: BriefStatus; sourceFindId: string | null; metrics: Metric[];
 }
 export interface State {
+  telegramOffsets?: Record<string, number>;
+  telegramOffsetTimes?: Record<string, number>;
   platforms: Platform[]; directions: Direction[]; finds: Find[]; cards: Card[];
   spend: { month: string; usd: number };
 }
 export type Action =
   | { type: "direction.add"; direction: Direction }
   | { type: "direction.remove"; direction: Direction }
+  | { type: "platform.set"; platforms: Platform[] }
   | { type: "platform.toggle"; platform: Platform }
   | { type: "find.add"; finds: Find[] }
   | { type: "find.approve"; id: string; cardId: string; firstStage: string; contentType: string }

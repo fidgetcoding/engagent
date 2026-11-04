@@ -1,20 +1,23 @@
 import type { Action, Direction, State } from "./types";
 
-const sameDirection = (a: Direction, b: Direction) => a.kind === b.kind && a.value.toLowerCase() === b.value.toLowerCase();
-export const cleanValue = (v: string) => v.trim().replace(/^[#@]/, "");
+const directionValue = (d: Direction) => d.kind === "reference" ? d.value.trim() : cleanValue(d.value);
+const sameDirection = (a: Direction, b: Direction) => a.kind === b.kind && directionValue(a).toLowerCase() === directionValue(b).toLowerCase();
+export const cleanValue = (v: string) => v.trim().replace(/^[#@]/, "").trim();
 
 // Pure so the browser-only demo and the real server share every rule.
 export function applyAction(s: State, a: Action): State {
   const card = (id: string, fn: (c: State["cards"][number]) => State["cards"][number]) => ({ ...s, cards: s.cards.map((c) => (c.id === id ? fn(c) : c)) });
   switch (a.type) {
     case "direction.add": {
-      const value = a.direction.kind === "reference" ? a.direction.value.trim() : cleanValue(a.direction.value);
+      const value = directionValue(a.direction);
       const direction = { kind: a.direction.kind, value };
       if (!value || s.directions.some((d) => sameDirection(d, direction))) return s;
       return { ...s, directions: [...s.directions, direction] };
     }
     case "direction.remove":
       return { ...s, directions: s.directions.filter((d) => !sameDirection(d, a.direction)) };
+    case "platform.set":
+      return { ...s, platforms: [...new Set(a.platforms)] };
     case "platform.toggle":
       return { ...s, platforms: s.platforms.includes(a.platform) ? s.platforms.filter((p) => p !== a.platform) : [...s.platforms, a.platform] };
     case "find.add": {
@@ -34,6 +37,7 @@ export function applyAction(s: State, a: Action): State {
     case "find.skip":
       return { ...s, finds: s.finds.map((x) => (x.id === a.id && x.status === "new" ? { ...x, status: "skipped" as const } : x)) };
     case "card.add":
+      if (s.cards.some(c => c.id === a.card.id)) return s;
       return { ...s, cards: [a.card, ...s.cards] };
     case "card.move":
       return card(a.id, (c) => ({ ...c, stage: a.stage }));

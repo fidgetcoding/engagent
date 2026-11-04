@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import test from "node:test";
+import test, { after } from "node:test";
 import { handleButton, handleText, type Deps } from "../bot/agent";
 import { applyAction, initialState } from "../lib/reducer";
 import { filterAvoid, planSearches, scan, type ActorRunner } from "../lib/scan";
@@ -46,8 +46,13 @@ test("duplicate directions and finds are ignored", () => {
   assert.equal(s.finds.length, 1);
 });
 
+const testDirectories: string[] = [];
+after(() => { for (const dir of testDirectories) rmSync(dir, { recursive: true, force: true }); });
+
 function deps(): Deps {
-  const store = fileStore(path.join(mkdtempSync(path.join(tmpdir(), "eg-")), "s.json"));
+  const dir = mkdtempSync(path.join(tmpdir(), "eg-"));
+  testDirectories.push(dir);
+  const store = fileStore(path.join(dir, "s.json"));
   return { store, runner: async () => ({ items: [item("v")], usd: 0.25 }), newId: () => "c1", now: () => new Date("2026-11-02") };
 }
 
@@ -77,4 +82,32 @@ test("bad input gets guidance and changes nothing", async () => {
 test("interpreter output runs as a command but cannot recurse", async () => {
   const d = { ...deps(), interpret: async () => "/watch topic espresso" };
   assert.match((await handleText("track espresso", 1, d))[0].text, /Watching topic: espresso/);
+});
+
+test("unknown run outcomes retain their ceiling and stop at the cap", async () => {
+  let runs = 0;
+  const r = await scan(base(), caps, async () => { runs++; throw new Error("connection lost after start"); });
+  assert.equal(runs, 2);
+  assert.equal(r.usd, 2);
+  assert.equal(r.stoppedForCap, true);
+});
+
+test("unknown Telegram buttons cannot skip a find", async () => {
+  const d = deps();
+  await handleText("/scan", 1, d);
+  const before = await d.store.read();
+  assert.equal(await handleButton(`unknown:${before.finds[0].id}`, d), "Unknown button.");
+  assert.deepEqual(await d.store.read(), before);
+});
+
+test("unwatch normalizes the same hashtag syntax as watch", () => {
+  const state = applyAction(base(), { type: "direction.add", direction: { kind: "hashtag", value: "#Latte" } });
+  const next = applyAction(state, { type: "direction.remove", direction: { kind: "hashtag", value: " #LATTE " } });
+  assert.equal(next.directions.some(d => d.value.toLowerCase() === "latte"), false);
+});
+
+test("replaying card creation is idempotent", () => {
+  const card = { id: "retry-card", title: "Retry", type: "Short video", stage: "Idea", platforms: [], due: null, brief: "", briefStatus: "none" as const, sourceFindId: null, metrics: [] };
+  const state = applyAction(base(), { type: "card.add", card });
+  assert.deepEqual(applyAction(state, { type: "card.add", card }), state);
 });

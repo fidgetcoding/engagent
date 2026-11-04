@@ -8,9 +8,12 @@ export function middleware(req: NextRequest) {
   const pw = process.env.ENGAGENT_PASSWORD;
   if (!pw) return new NextResponse("Set ENGAGENT_PASSWORD to open this workspace.", { status: 503 });
   const [scheme, value] = (req.headers.get("authorization") ?? "").split(" ");
-  if (scheme === "Basic" && value) {
-    const decoded = atob(value);
-    if (same(decoded.slice(decoded.indexOf(":") + 1), pw)) return NextResponse.next();
+  if (scheme?.toLowerCase() === "basic" && value) {
+    try {
+      const decoded = atob(value);
+      const colon = decoded.indexOf(":");
+      if (colon >= 0 && same(decoded.slice(colon + 1), pw)) return NextResponse.next();
+    } catch { /* malformed credentials are unauthorized */ }
   }
   return new NextResponse("Sign in", { status: 401, headers: { "WWW-Authenticate": 'Basic realm="Engagent"' } });
 }
